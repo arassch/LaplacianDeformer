@@ -207,8 +207,8 @@ function refreshPoints() {
     if (!v.geom) continue;
     const p = v.geom.attributes.position.array;
     const pts = (ids) => { const a = new Float32Array(ids.length * 3); ids.forEach((id, i) => a.set(p.subarray(3 * id, 3 * id + 3), 3 * i)); return new THREE.BufferAttribute(a, 3); };
-    v.selPts.geometry.setAttribute('position', pts(tinted() && shading === 'shaded' ? [] : selection));
-    v.fixPts.geometry.setAttribute('position', pts(tinted() && shading === 'shaded' ? [] : fixed));
+    v.selPts.geometry.setAttribute('position', pts(tinted() ? [] : selection));     // big meshes: no dots in any mode
+    v.fixPts.geometry.setAttribute('position', pts(tinted() ? [] : fixed));
   }
   updateTint(); updateMode(); render();
 }
