@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Laplacian Deformer</title>
+<style>
+/* VOICE: a workbench tool — quiet, technical, gets out of the way of the mesh.
+   IDEA: the QGLViewer window from 2018, rebuilt as a clean recording stage.
+   PICTURE: the live mesh itself, edge to edge; everything else folds away with H.
+   COLOUR and TYPE: graphite stage, pale-yellow mesh, red handles / grey fixed points as in deform.cpp; Inter.
+   LAYOUT: slim toolbar on top, full-bleed viewport, one status line and a key legend below. */
+:root{color-scheme:light dark;--bg:light-dark(#f4f4f2,#17181b);--ink:light-dark(#1d1f23,#e9eaec);--mut:light-dark(#5f636b,#9a9ea6);--line:light-dark(#d9dad6,#2c2e33);--btn:light-dark(#fff,#23252a);--acc:#e2402f}
+:root[data-theme=light]{color-scheme:light}:root[data-theme=dark]{color-scheme:dark}
+*{box-sizing:border-box;min-width:0}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 Inter,system-ui,-apple-system,"Segoe UI",sans-serif;display:flex;flex-direction:column;overflow:hidden;-webkit-user-select:none;user-select:none}
+header{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;padding:10px 16px;border-bottom:1px solid var(--line)}
+h1{font-size:17px;font-weight:650;margin:0 8px 0 0;letter-spacing:-.01em}
+.grp{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+button,.file{font:inherit;font-size:14px;min-height:36px;padding:6px 12px;border-radius:8px;border:1px solid var(--line);background:var(--btn);color:var(--ink);cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+button:hover,.file:hover{border-color:var(--mut)}
+button:focus-visible,.file:focus-within,input:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+button[aria-pressed=true]{background:var(--acc);border-color:var(--acc);color:#fff}
+kbd{font:600 11px/1 Inter,system-ui,sans-serif;padding:3px 5px;border-radius:4px;border:1px solid var(--line);color:var(--mut)}
+button[aria-pressed=true] kbd{color:#fff;border-color:#fff8}
+.file input{position:absolute;width:1px;height:1px;opacity:0}
+label.k{display:inline-flex;align-items:center;gap:6px;font-size:14px;color:var(--mut)}
+label.k input{width:84px;font:inherit;font-size:16px;padding:5px 8px;border-radius:8px;border:1px solid var(--line);background:var(--btn);color:var(--ink);text-align:right}
+#stage{position:relative;flex:1;min-height:0;background:#2b2d31}
+#stage.drop::after{content:"Drop an .obj file to load it";position:absolute;inset:12px;border:2px dashed #fff8;border-radius:12px;display:grid;place-items:center;color:#fff;font-size:18px;background:#0006}
+#view{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
+#rect{position:absolute;display:none;border:1.5px solid #8fb0ff;background:#3a64d64d;pointer-events:none}
+#mode{position:absolute;left:14px;top:12px;padding:5px 10px;border-radius:999px;background:#0008;color:#ddd;font-size:13px;pointer-events:none}
+#mode.on{background:var(--acc);color:#fff}
+footer{display:flex;flex-wrap:wrap;gap:6px 18px;padding:8px 16px;border-top:1px solid var(--line);font-size:13px;color:var(--mut)}
+#status{color:var(--ink)}
+.legend{display:flex;flex-wrap:wrap;gap:4px 14px}
+.dot{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+body.clean header,body.clean footer,body.clean #mode{display:none}
+.side{font-size:13px;font-weight:600;color:var(--mut)}
+.lab{position:absolute;bottom:14px;padding:6px 12px;border-radius:8px;background:#000a;color:#fff;font:600 15px/1.2 Inter,system-ui,sans-serif;pointer-events:none;font-variant-numeric:tabular-nums}
+#lab0{left:14px}#lab1{left:calc(50% + 14px);display:none}
+#divider{position:absolute;top:0;bottom:0;left:50%;width:2px;margin-left:-1px;background:#16171a;display:none;pointer-events:none}
+body.compare #lab1,body.compare #divider{display:block}
+#legend{position:absolute;right:14px;top:12px;display:none;align-items:center;gap:8px;padding:6px 10px;border-radius:8px;background:#000a;color:#fff;font:600 12px/1 Inter,system-ui,sans-serif;pointer-events:none;font-variant-numeric:tabular-nums}
+#legend i{display:block;width:140px;height:10px;border-radius:3px;background:linear-gradient(90deg,#30123b,#4686fb,#1be5b5,#a4fc3c,#fbb938,#e4460a,#7a0403)}
+#legend b{font-weight:500;opacity:.8}
+body[data-shading=displacement] #legend{display:flex}
+body:not(.compare) .grp.right{opacity:.45}
+body:not(.compare) #lab0{display:none}
+@media(max-width:600px){h1{width:100%}}
+</style>
+</head>
+<body>
+<header>
+  <h1>Laplacian Deformer</h1>
+  <div class="grp">
+    <label class="file" title="Load a triangle mesh (.obj)">Load OBJ<input id="file" type="file" accept=".obj"></label>
+    <button id="bFix" title="Selection becomes the fixed vertices">Fix selection <kbd>S</kbd></button>
+    <button id="bUnfix" title="Unfix the selected vertices, or all fixed vertices if nothing is selected">Unfix <kbd>U</kbd></button>
+    <button id="bMove" aria-pressed="false" title="Toggle move mode">Move mode <kbd>W</kbd></button>
+    <button id="bUndo" title="Undo last drag">Undo <kbd>⌘Z</kbd></button>
+    <button id="bReset" title="Reload the mesh">Reset <kbd>R</kbd></button>
+    <button id="bFrame" title="Frame the mesh">Frame <kbd>F</kbd></button>
+    <button id="bEdges" title="Show or hide the wireframe">Edges <kbd>E</kbd></button>
+    <button id="bShade" title="Cycle display: shaded, displacement heat map, zebra stripes"><span>Shaded</span> <kbd>V</kbd></button>
+    <button id="bMarkers" aria-pressed="false" title="Hide or show the handle and fixed markers">Hide markers <kbd>M</kbd></button>
+  </div>
+  <div class="grp">
+    <span class="side">Left</span>
+    <label class="k">Ks <input id="ks0" type="number" min="0" step="any" value="1"></label>
+    <label class="k">Kb <input id="kb0" type="number" min="0" step="any" value="0"></label>
+  </div>
+  <div class="grp right">
+    <span class="side">Right</span>
+    <label class="k">Ks <input id="ks1" type="number" min="0" step="any" value="0"></label>
+    <label class="k">Kb <input id="kb1" type="number" min="0" step="any" value="1"></label>
+  </div>
+  <button id="bCompare" aria-pressed="true" title="Side-by-side comparison on or off">Compare <kbd>C</kbd></button>
+  <button id="bHide" title="Hide all UI for recording">Clean view <kbd>H</kbd></button>
+</header>
+<div id="stage">
+  <canvas id="view"></canvas>
+  <div id="rect"></div>
+  <div id="mode">View mode: drag to orbit</div>
+  <div id="lab0" class="lab"></div>
+  <div id="lab1" class="lab"></div>
+  <div id="divider"></div>
+  <div id="legend"><span>0</span><i></i><span id="legMax">0</span><b>displacement</b></div>
+</div>
+<footer>
+  <span id="status">Starting the deformer…</span>
+  <span class="legend">
+    <span><span class="dot" style="background:#ff2a2a"></span>handle</span>
+    <span><span class="dot" style="background:#b3b3b3"></span>fixed</span>
+    <span><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> demos · <kbd>Shift</kbd>+number saves the current set-up</span>
+    <span>Drag orbit · right-drag pan · scroll zoom</span>
+    <span><kbd>Shift</kbd>-drag select · <kbd>Ctrl</kbd>/<kbd>⌘</kbd>-drag deselect</span>
+  </span>
+</footer>
+<!--INLINE-->
+</body>
+</html>

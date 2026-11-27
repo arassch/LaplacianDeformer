@@ -1,0 +1,13 @@
+{
+  "name": "laplacian-deformer-web",
+  "private": true,
+  "description": "Browser version of LaplacianDeformer: Deformer compiled to WebAssembly with a three.js viewer",
+  "scripts": {
+    "build": "./build.sh",
+    "test": "node test/verify.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "0.24.0",
+    "three": "0.170.0"
+  }
+}
